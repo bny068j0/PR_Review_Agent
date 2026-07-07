@@ -6,10 +6,10 @@ import * as v from "valibot";
 // Direct Octokit-based tools (recommended approach per Flue docs)
 // ---------------------------------------------------------------------------
 
-const token = process.env.GITHUB_TOKEN;
+const token = process.env.PAT_TOKEN;
 if (!token) {
   throw new Error(
-    "GITHUB_TOKEN is required. Set it to a GitHub personal access token.",
+    "PAT_TOKEN is required. Set it to a GitHub personal access token.",
   );
 }
 // Narrowed constant after the guard above
