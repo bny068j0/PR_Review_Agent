@@ -309,6 +309,146 @@ export const submitPullRequestReview = defineTool({
   },
 });
 
+/**
+ * Read the contents of a file from the repository (Issue #1, #3, #7, #8).
+ * Use this to fetch related files, configs, and documentation for full context.
+ */
+export const readRepoFile = defineTool({
+  name: "read_repo_file",
+  description:
+    "Read the full contents of a file from the repository at a specific ref (branch/commit). Use this to understand related code, imports, configurations, documentation, and coding guidelines that are not in the diff.",
+  input: v.object({
+    owner: v.pipe(
+      v.string(),
+      v.description("Repository owner (user or organization)"),
+    ),
+    repo: v.pipe(v.string(), v.description("Repository name")),
+    path: v.pipe(v.string(), v.description("File path relative to repo root")),
+    ref: v.optional(
+      v.pipe(
+        v.string(),
+        v.description(
+          "Branch name or commit SHA. Default: the repo's default branch",
+        ),
+      ),
+    ),
+    maxLines: v.optional(
+      v.pipe(
+        v.number(),
+        v.description(
+          "Maximum lines to return (default 500). Large files are truncated.",
+        ),
+      ),
+    ),
+  }),
+  async run({ input, signal }) {
+    const { data } = await octokit.rest.repos.getContent({
+      owner: input.owner,
+      repo: input.repo,
+      path: input.path,
+      ref: input.ref,
+      request: { signal },
+    });
+
+    // getContent returns an array for directories, a single object for files
+    if (Array.isArray(data)) {
+      return {
+        type: "directory",
+        path: input.path,
+        entries: data.map((e) => ({
+          name: e.name,
+          path: e.path,
+          type: e.type,
+          size: e.size,
+        })),
+        content: null,
+        size: 0,
+        total_lines: 0,
+        truncated: false,
+      };
+    }
+
+    if (data.type !== "file" || !("content" in data)) {
+      return {
+        type: data.type,
+        path: input.path,
+        content: null,
+        entries: [],
+        size: 0,
+        total_lines: 0,
+        truncated: false,
+      };
+    }
+
+    const content = Buffer.from(data.content, "base64").toString("utf-8");
+    const max = input.maxLines ?? 500;
+    const lines = content.split("\n");
+    const truncated = lines.length > max;
+
+    return {
+      type: "file",
+      path: data.path,
+      size: data.size ?? 0,
+      truncated,
+      total_lines: lines.length,
+      content: truncated ? lines.slice(0, max).join("\n") : content,
+      entries: [],
+    };
+  },
+});
+
+/**
+ * List files in a repository directory (Issue #3).
+ * Helps the agent discover related files and project structure.
+ */
+export const listRepoFiles = defineTool({
+  name: "list_repo_files",
+  description:
+    "List files and directories at a given path in the repository. Use this to explore project structure, discover related source files, configs, and documentation.",
+  input: v.object({
+    owner: v.pipe(
+      v.string(),
+      v.description("Repository owner (user or organization)"),
+    ),
+    repo: v.pipe(v.string(), v.description("Repository name")),
+    path: v.optional(
+      v.pipe(
+        v.string(),
+        v.description("Directory path relative to repo root. Default: root"),
+      ),
+    ),
+    ref: v.optional(
+      v.pipe(
+        v.string(),
+        v.description(
+          "Branch name or commit SHA. Default: the repo's default branch",
+        ),
+      ),
+    ),
+  }),
+  async run({ input, signal }) {
+    const { data } = await octokit.rest.repos.getContent({
+      owner: input.owner,
+      repo: input.repo,
+      path: input.path ?? "",
+      ref: input.ref,
+      request: { signal },
+    });
+
+    const entries = Array.isArray(data) ? data : [data];
+
+    return {
+      path: input.path ?? "/",
+      entries: entries.map((e) => ({
+        name: e.name,
+        path: e.path,
+        type: e.type,
+        size: e.size,
+      })),
+    };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Aggregate all tools
 // ---------------------------------------------------------------------------
@@ -317,6 +457,8 @@ export const githubTools = [
   getPullRequest,
   getPullRequestDiff,
   getPullRequestReviews,
+  readRepoFile,
+  listRepoFiles,
   createReviewComment,
   submitPullRequestReview,
 ];
