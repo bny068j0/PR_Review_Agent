@@ -101,7 +101,7 @@ export default defineWorkflow({
     ),
     repo: v.pipe(v.string(), v.description("Repository name")),
     pullNumber: v.pipe(
-      v.number(),
+      v.string(),
       v.description("Pull request number to review"),
     ),
     // Optional: run a static analysis command before the AI review (Issue #19)
